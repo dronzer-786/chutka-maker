@@ -583,7 +583,7 @@ export default function ChutkaMaker() {
   );
 
   return (
-    <div className="min-h-[100dvh] bg-zinc-50 text-zinc-950">
+    <div className="min-h-[100dvh] bg-zinc-50 text-zinc-950 flex flex-col">
       {/* Hidden A4 Measurement container */}
       <div
         ref={measurerRef}
@@ -601,19 +601,13 @@ export default function ChutkaMaker() {
         }}
       />
 
-      {/* Floating Progress Bar during AI Format All */}
+      {/* Floating Professional Progress Toast during AI Format All */}
       {isFormattingAll && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-zinc-950 text-white px-4 py-3 rounded-2xl shadow-2xl border border-purple-500/50 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="relative flex items-center justify-center">
-            <CircleNotch className="size-6 animate-spin text-purple-400" />
-            <Sparkle className="size-3 absolute text-pink-400 animate-pulse" />
-          </div>
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-zinc-950 text-white px-4 py-3 rounded-xl shadow-2xl border border-zinc-800 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <CircleNotch className="size-4 animate-spin text-zinc-300 shrink-0" />
           <div className="flex flex-col">
-            <span className="text-xs font-bold text-purple-200 flex items-center gap-1.5">
-              <span>NVIDIA AI Formatting</span>
-              <span className="inline-block size-1.5 rounded-full bg-purple-400 animate-ping" />
-            </span>
-            <span className="text-[11px] text-zinc-400">Structuring points with '-' &amp; numbering...</span>
+            <span className="text-xs font-semibold text-zinc-100">AI Formatting in progress</span>
+            <span className="text-[11px] font-mono text-zinc-400">Structuring points with '-' &amp; numbering...</span>
           </div>
         </div>
       )}
@@ -729,7 +723,7 @@ export default function ChutkaMaker() {
       </header>
 
       {/* Main Container */}
-      <main className="print-area mx-auto w-full max-w-[1400px] px-3 sm:px-6 py-4 sm:py-6">
+      <main className="print-area mx-auto w-full max-w-[1400px] px-3 sm:px-6 py-4 sm:py-6 flex-1">
         {/* TAB 1: WRITE ANSWERS */}
         {activeTab === "write" && (
           <div className="flex flex-col lg:flex-row gap-6 w-full items-start">
@@ -773,15 +767,15 @@ export default function ChutkaMaker() {
                     size="sm"
                     disabled={isFormattingAll || blocks.every((b) => !b.text.trim())}
                     onClick={formatAllWithAI}
-                    className="text-purple-700 border-purple-300 bg-purple-50 hover:bg-purple-100 text-xs font-medium"
+                    className="text-xs font-medium text-zinc-800 border-zinc-300 bg-white hover:bg-zinc-100 shadow-xs"
                     title="Auto-format question numbering, points (-), & layout for all answers using NVIDIA AI"
                   >
                     {isFormattingAll ? (
-                      <CircleNotch className="size-3.5 animate-spin text-purple-700" />
+                      <CircleNotch className="size-3.5 animate-spin text-zinc-900" />
                     ) : (
-                      <Sparkle className="size-3.5 text-purple-600 animate-pulse" />
+                      <Sparkle className="size-3.5 text-zinc-700" />
                     )}
-                    {isFormattingAll ? "AI Formatting..." : "AI Format All"}
+                    {isFormattingAll ? "Formatting All..." : "AI Format All"}
                   </Button>
 
                   {anyHasMarkdown && (
@@ -837,18 +831,18 @@ export default function ChutkaMaker() {
                     return (
                       <div
                         key={b.id}
-                        className={`group relative rounded-xl border transition-all duration-300 shadow-xs ${
+                        className={`group relative rounded-xl border transition-all duration-200 shadow-xs ${
                           isFormattingThis
-                            ? "border-purple-500 ring-2 ring-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.25)] bg-purple-50/20"
+                            ? "border-zinc-700 ring-2 ring-zinc-950/10 shadow-sm bg-zinc-50/50"
                             : b.id === activeId
                             ? "border-zinc-500 ring-2 ring-zinc-950/5 bg-white"
                             : "border-zinc-200 hover:border-zinc-300 bg-white"
                         }`}
                         onClick={() => setActiveId(b.id)}
                       >
-                        {/* Top Animated Glowing Scanner Bar during AI Formatting */}
+                        {/* Top Sleek Progress Line during AI Formatting */}
                         {isFormattingThis && (
-                          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-500 animate-pulse rounded-t-xl z-20" />
+                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-zinc-900 animate-pulse rounded-t-xl z-20" />
                         )}
 
                         <div className="flex items-center justify-between border-b border-zinc-100 px-3.5 py-2 bg-zinc-50/50 rounded-t-xl">
@@ -861,9 +855,9 @@ export default function ChutkaMaker() {
                             </span>
 
                             {isFormattingThis && (
-                              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-700 bg-purple-100/90 px-2 py-0.5 rounded-full animate-pulse border border-purple-300">
-                                <Sparkle className="size-3 animate-spin text-purple-600" />
-                                AI Structuring Points...
+                              <span className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-700 bg-zinc-100 border border-zinc-200 px-2 py-0.5 rounded-md">
+                                <CircleNotch className="size-3 animate-spin text-zinc-900" />
+                                Formatting layout &amp; points...
                               </span>
                             )}
                           </div>
@@ -878,17 +872,17 @@ export default function ChutkaMaker() {
                                 e.stopPropagation();
                                 formatBlockWithAI(b.id);
                               }}
-                              className={`h-7 px-2 text-[11px] font-medium transition-all ${
+                              className={`h-7 px-2.5 text-[11px] font-medium border-zinc-300 transition-all ${
                                 isFormattingThis
-                                  ? "text-purple-700 border-purple-400 bg-purple-100 shadow-sm"
-                                  : "text-purple-700 border-purple-300 bg-purple-50 hover:bg-purple-100"
+                                  ? "bg-zinc-100 text-zinc-900 border-zinc-400"
+                                  : "bg-white text-zinc-800 hover:bg-zinc-100"
                               }`}
-                              title="Auto-format question numbering, points (-), & layout with NVIDIA AI"
+                              title="Auto-format question numbering, points (-), & layout"
                             >
                               {isFormattingThis ? (
-                                <CircleNotch className="size-3 animate-spin text-purple-700" />
+                                <CircleNotch className="size-3 animate-spin text-zinc-900" />
                               ) : (
-                                <Sparkle className="size-3 text-purple-600" />
+                                <Sparkle className="size-3 text-zinc-700" />
                               )}
                               {isFormattingThis ? "Formatting..." : "AI Format"}
                             </Button>
@@ -928,7 +922,7 @@ export default function ChutkaMaker() {
                           value={b.text}
                           placeholder="Paste or write your answer here..."
                           className={`min-h-[110px] resize-y border-0 text-sm sm:text-base leading-relaxed p-3.5 shadow-none focus-visible:ring-0 rounded-b-xl transition-colors ${
-                            isFormattingThis ? "bg-purple-50/30 text-purple-950" : ""
+                            isFormattingThis ? "bg-zinc-50/40 text-zinc-900" : ""
                           }`}
                           onChange={(e) => {
                             setActiveId(b.id);
