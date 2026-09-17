@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   columnCount: 2,
   fontSize: 9,
   lineHeight: 1.35,
-  margin: 12,
+  margin: 4,
   columnGap: 8,
   blockGap: 3,
   font: "sans",

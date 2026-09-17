@@ -139,7 +139,7 @@ export default function ChutkaMaker() {
         setAutoScale(parseInt(zoomMode) / 100);
         return;
       }
-      const containerWidth = previewAreaRef.current.clientWidth - 32;
+      const containerWidth = previewAreaRef.current.clientWidth - 8;
       const targetWidth = 794; // 210mm in px at 96dpi
       if (containerWidth < targetWidth && containerWidth > 0) {
         setAutoScale(Math.max(0.35, containerWidth / targetWidth));
@@ -500,7 +500,7 @@ export default function ChutkaMaker() {
           </div>
           <Slider
             id="margin"
-            min={5}
+            min={1}
             max={30}
             step={1}
             value={settings.margin}
@@ -962,7 +962,7 @@ export default function ChutkaMaker() {
             {/* Live A4 Preview Stack - Scrollable */}
             <section
               ref={previewAreaRef}
-              className="print-pages flex-1 h-full overflow-y-auto pr-1 flex flex-col items-center gap-6 rounded-2xl bg-zinc-200/70 p-4 sm:p-6 w-full"
+              className="print-pages flex-1 h-full overflow-y-auto flex flex-col items-center gap-4 rounded-2xl bg-zinc-200/70 p-1 sm:p-1 w-full"
             >
               {/* Viewport Toolbar */}
               <div className="print-hidden flex flex-wrap items-center justify-between gap-3 w-full bg-white p-2.5 rounded-xl border border-zinc-200 shadow-xs sticky top-0 z-10">
