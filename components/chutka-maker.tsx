@@ -391,33 +391,33 @@ export default function ChutkaMaker() {
         </p>
         <Field>
           <FieldLabel>Flow direction</FieldLabel>
-          <div className="flex gap-1 border border-zinc-200 rounded-lg p-1 bg-zinc-50">
+          <div className="grid grid-cols-2 gap-1 border border-zinc-200/80 rounded-xl p-1 bg-zinc-100/70">
             <button
               type="button"
               onClick={() => set("mode", "column")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all ${
+              className={`flex items-center justify-center gap-2 py-2 px-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
                 settings.mode === "column"
                   ? "bg-zinc-900 text-white shadow-xs"
-                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60"
               }`}
             >
-              <Columns className="size-3.5" />
-              Column wise
+              <Columns className="size-4 shrink-0" />
+              <span>Column wise</span>
             </button>
             <button
               type="button"
               onClick={() => set("mode", "row")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all ${
+              className={`flex items-center justify-center gap-2 py-2 px-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
                 settings.mode === "row"
                   ? "bg-zinc-900 text-white shadow-xs"
-                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60"
               }`}
             >
-              <Rows className="size-3.5" />
-              Row wise
+              <Rows className="size-4 shrink-0" />
+              <span>Row wise</span>
             </button>
           </div>
-          <FieldDescription className="mt-1 text-[11px]">
+          <FieldDescription className="mt-1.5 text-[11px]">
             {settings.mode === "column"
               ? "Text flows down each column vertically, then into the next column."
               : "Text flows across full-width rows down the page."}
