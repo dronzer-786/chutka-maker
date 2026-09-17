@@ -1090,6 +1090,21 @@ export default function ChutkaMaker() {
           </div>
         )}
       </main>
+
+      {/* App Footer */}
+      <footer className="print-hidden border-t border-zinc-200/80 bg-white/60 py-4 text-center">
+        <p className="text-xs text-zinc-500 font-medium">
+          Built in exam pressure by{" "}
+          <a
+            href="https://taqui.in"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-zinc-800 underline underline-offset-2 hover:text-purple-600 transition-colors"
+          >
+            Taqui.in
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }
