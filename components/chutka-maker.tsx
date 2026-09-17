@@ -70,7 +70,7 @@ export default function ChutkaMaker() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [ready, setReady] = useState(false);
-  const [autoColumns, setAutoColumns] = useState(true);
+  const [autoColumns, setAutoColumns] = useState(false);
   const [activeTab, setActiveTab] = useState<"write" | "preview">("preview");
   const [showSettingsSidebar, setShowSettingsSidebar] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
