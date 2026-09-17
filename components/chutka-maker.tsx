@@ -97,7 +97,13 @@ export default function ChutkaMaker() {
         if (raw) {
           const data = JSON.parse(raw);
           if (Array.isArray(data.blocks)) setBlocks(data.blocks);
-          if (data.settings) setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
+          if (data.settings) {
+            const merged = { ...DEFAULT_SETTINGS, ...data.settings };
+            if (typeof data.settings.margin === "number" && data.settings.margin >= 12) {
+              merged.margin = 3;
+            }
+            setSettings(merged);
+          }
           if (typeof data.autoColumns === "boolean") setAutoColumns(data.autoColumns);
           if (typeof data.activeId === "string") setActiveId(data.activeId);
         } else {
@@ -500,7 +506,7 @@ export default function ChutkaMaker() {
           </div>
           <Slider
             id="margin"
-            min={1}
+            min={0}
             max={30}
             step={1}
             value={settings.margin}
@@ -518,7 +524,7 @@ export default function ChutkaMaker() {
             </div>
             <Slider
               id="col-gap"
-              min={2}
+              min={0}
               max={20}
               step={1}
               value={settings.columnGap}
