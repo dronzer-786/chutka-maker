@@ -1,0 +1,1095 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Columns,
+  Rows,
+  Download,
+  Plus,
+  Trash,
+  TextAa,
+  Sparkle,
+  Broom,
+  NotePencil,
+  FileText,
+  SlidersHorizontal,
+  Check,
+  X,
+  CircleNotch,
+  Warning,
+} from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import {
+  Field,
+  FieldLabel,
+  FieldDescription,
+  FieldGroup,
+} from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DEFAULT_SETTINGS,
+  FONT_STACKS,
+  type Block,
+  type Settings,
+} from "@/lib/types";
+import { cleanMarkdown, hasMarkdown } from "@/lib/markdown";
+
+const STORAGE_KEY = "chutka-maker:v1";
+
+const SAMPLE_TEXT = `Photosynthesis — the process by which green plants convert light energy into chemical energy. Occurs in chloroplasts, primarily in leaf mesophyll cells. Equation: 6CO2 + 6H2O -> C6H12O6 + 6O2. Light-dependent reactions happen in the thylakoid membrane; the Calvin cycle happens in the stroma.
+
+Newton's Laws: 1) An object stays at rest or in uniform motion unless acted on by a net external force. 2) F = ma, force equals mass times acceleration. 3) Every action has an equal and opposite reaction. These laws form the foundation of classical mechanics.
+
+The French Revolution (1789-1799) began with the storming of the Bastille on 14 July 1789. Causes included financial crisis, social inequality under the Ancien Regime, and Enlightenment ideas. It ended with Napoleon's coup in 1799.
+
+Mitosis stages: Prophase (chromosomes condense), Metaphase (alignment at the equatorial plate), Anaphase (sister chromatids separate), Telophase (nuclear envelopes reform), followed by cytokinesis.`;
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+type PageItem = {
+  id: string;
+  blockId: string;
+  text: string;
+};
+
+export default function ChutkaMaker() {
+  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [ready, setReady] = useState(false);
+  const [autoColumns, setAutoColumns] = useState(true);
+  const [activeTab, setActiveTab] = useState<"write" | "preview">("preview");
+  const [showSettingsSidebar, setShowSettingsSidebar] = useState(true);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [cleanFeedback, setCleanFeedback] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // AI Formatting State
+  const [formattingId, setFormattingId] = useState<string | null>(null);
+  const [isFormattingAll, setIsFormattingAll] = useState(false);
+
+  // Zoom & Scale for responsive A4 preview
+  const [zoomMode, setZoomMode] = useState<"auto" | "100" | "75" | "50">("auto");
+  const [autoScale, setAutoScale] = useState(1);
+  const previewAreaRef = useRef<HTMLDivElement>(null);
+
+  // Measurement DOM ref for pagination
+  const measurerRef = useRef<HTMLDivElement>(null);
+  const [pages, setPages] = useState<PageItem[][]>([[]]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (Array.isArray(data.blocks)) setBlocks(data.blocks);
+          if (data.settings) setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
+          if (typeof data.autoColumns === "boolean") setAutoColumns(data.autoColumns);
+          if (typeof data.activeId === "string") setActiveId(data.activeId);
+        } else {
+          const id = uid();
+          setBlocks([{ id, text: SAMPLE_TEXT }]);
+          setActiveId(id);
+        }
+      } catch {
+        // ignore corrupt storage
+      }
+      setReady(true);
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ blocks, settings, autoColumns, activeId })
+    );
+  }, [ready, blocks, settings, autoColumns, activeId]);
+
+  // Auto column count based on font size
+  const suggestedColumns = settings.fontSize <= 8 ? 3 : settings.fontSize <= 10 ? 2 : 1;
+  useEffect(() => {
+    if (autoColumns) {
+      setSettings((s) =>
+        s.columnCount === suggestedColumns ? s : { ...s, columnCount: suggestedColumns }
+      );
+    }
+  }, [autoColumns, suggestedColumns]);
+
+  // Responsive scale update for Preview tab
+  useEffect(() => {
+    const calculateScale = () => {
+      if (!previewAreaRef.current) return;
+      if (zoomMode !== "auto") {
+        setAutoScale(parseInt(zoomMode) / 100);
+        return;
+      }
+      const containerWidth = previewAreaRef.current.clientWidth - 32;
+      const targetWidth = 794; // 210mm in px at 96dpi
+      if (containerWidth < targetWidth && containerWidth > 0) {
+        setAutoScale(Math.max(0.35, containerWidth / targetWidth));
+      } else {
+        setAutoScale(1);
+      }
+    };
+
+    calculateScale();
+    window.addEventListener("resize", calculateScale);
+    return () => window.removeEventListener("resize", calculateScale);
+  }, [zoomMode, activeTab, showSettingsSidebar]);
+
+  const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
+    setSettings((s) => ({ ...s, [key]: value }));
+
+  const updateActiveText = useCallback(
+    (text: string) => {
+      setBlocks((prev) => {
+        if (!activeId) {
+          if (!text.trim()) return prev;
+          const id = uid();
+          setActiveId(id);
+          return [...prev, { id, text }];
+        }
+        return prev.map((b) => (b.id === activeId ? { ...b, text } : b));
+      });
+    },
+    [activeId]
+  );
+
+  const addBlock = () => {
+    const id = uid();
+    setBlocks((prev) => [...prev, { id, text: "" }]);
+    setActiveId(id);
+  };
+
+  const removeBlock = (id: string) => {
+    setBlocks((prev) => {
+      const next = prev.filter((b) => b.id !== id);
+      if (id === activeId) setActiveId(next[0]?.id ?? null);
+      return next;
+    });
+  };
+
+  const clearAllBlocks = () => {
+    if (window.confirm("Are you sure you want to clear all answers?")) {
+      const id = uid();
+      setBlocks([{ id, text: "" }]);
+      setActiveId(id);
+    }
+  };
+
+  // Clean Markdown handlers
+  const anyHasMarkdown = useMemo(
+    () => blocks.some((b) => hasMarkdown(b.text)),
+    [blocks]
+  );
+
+  const cleanAllMarkdown = () => {
+    setBlocks((prev) =>
+      prev.map((b) => ({ ...b, text: cleanMarkdown(b.text) }))
+    );
+    setCleanFeedback("Cleaned all markdown formatting!");
+    setTimeout(() => setCleanFeedback(null), 2500);
+  };
+
+  const cleanBlockMarkdown = (id: string) => {
+    setBlocks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, text: cleanMarkdown(b.text) } : b))
+    );
+    setCleanFeedback("Cleaned markdown for answer!");
+    setTimeout(() => setCleanFeedback(null), 2500);
+  };
+
+  // AI Auto Format handlers using NVIDIA NIM API
+  const formatBlockWithAI = async (id: string) => {
+    const block = blocks.find((b) => b.id === id);
+    if (!block || !block.text.trim()) return;
+
+    setFormattingId(id);
+    setAiError(null);
+
+    try {
+      const res = await fetch("/api/ai-format", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: block.text }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setAiError(data.error || "AI formatting failed.");
+        setTimeout(() => setAiError(null), 5000);
+        return;
+      }
+
+      if (data.formattedText) {
+        setBlocks((prev) =>
+          prev.map((b) => (b.id === id ? { ...b, text: data.formattedText } : b))
+        );
+        setCleanFeedback("AI structured points & formatting cleanly!");
+        setTimeout(() => setCleanFeedback(null), 2500);
+      }
+    } catch (err: any) {
+      setAiError(err?.message || "Failed to communicate with AI server.");
+      setTimeout(() => setAiError(null), 5000);
+    } finally {
+      setFormattingId(null);
+    }
+  };
+
+  const formatAllWithAI = async () => {
+    const blocksWithText = blocks.filter((b) => b.text.trim());
+    if (blocksWithText.length === 0) return;
+
+    setIsFormattingAll(true);
+    setAiError(null);
+
+    try {
+      for (const b of blocksWithText) {
+        setFormattingId(b.id);
+        const res = await fetch("/api/ai-format", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: b.text }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setAiError(data.error || "AI formatting failed for one or more answers.");
+          setTimeout(() => setAiError(null), 5000);
+          break;
+        }
+        if (data.formattedText) {
+          setBlocks((prev) =>
+            prev.map((item) =>
+              item.id === b.id ? { ...item, text: data.formattedText } : item
+            )
+          );
+        }
+      }
+      setCleanFeedback("AI auto-formatted points for all answers!");
+      setTimeout(() => setCleanFeedback(null), 2500);
+    } catch (err: any) {
+      setAiError(err?.message || "Failed to communicate with AI server.");
+      setTimeout(() => setAiError(null), 5000);
+    } finally {
+      setFormattingId(null);
+      setIsFormattingAll(false);
+    }
+  };
+
+  // Convert answer blocks to paragraph items for measurement
+  const allParagraphs = useMemo(() => {
+    const items: PageItem[] = [];
+    blocks.forEach((b) => {
+      const trimmed = b.text.trim();
+      if (!trimmed) return;
+      const paras = trimmed.split(/\n\n+/);
+      paras.forEach((p, pIdx) => {
+        items.push({
+          id: `${b.id}-${pIdx}`,
+          blockId: b.id,
+          text: p,
+        });
+      });
+    });
+    return items;
+  }, [blocks]);
+
+  // Synchronous DOM pagination measurement
+  useEffect(() => {
+    if (!ready) return;
+    const measurer = measurerRef.current;
+    if (!measurer || allParagraphs.length === 0) {
+      setPages([[]]);
+      return;
+    }
+
+    let currentPages: PageItem[][] = [[]];
+    let currentPageIdx = 0;
+
+    measurer.innerHTML = "";
+    const flowContainer = document.createElement("div");
+    flowContainer.className = "a4-flow";
+    flowContainer.style.padding = `${settings.margin}mm`;
+    flowContainer.style.columnCount = settings.mode === "column" ? String(settings.columnCount) : "1";
+    flowContainer.style.columnGap = settings.mode === "column" ? `${settings.columnGap}mm` : "0mm";
+    flowContainer.style.fontSize = `${settings.fontSize}pt`;
+    flowContainer.style.lineHeight = String(settings.lineHeight);
+    flowContainer.style.fontFamily = FONT_STACKS[settings.font];
+    flowContainer.style.textAlign = settings.justify ? "justify" : "left";
+    flowContainer.style.display = "block";
+    measurer.appendChild(flowContainer);
+
+    for (const item of allParagraphs) {
+      const pEl = document.createElement("p");
+      pEl.className = "whitespace-pre-wrap";
+      pEl.style.marginBottom = `${settings.blockGap}mm`;
+      if (settings.mode === "column") {
+        pEl.style.breakInside = "avoid";
+      }
+      pEl.textContent = item.text;
+      flowContainer.appendChild(pEl);
+
+      if (flowContainer.scrollHeight > flowContainer.clientHeight + 2 && currentPages[currentPageIdx].length > 0) {
+        flowContainer.removeChild(pEl);
+        currentPageIdx++;
+        currentPages[currentPageIdx] = [item];
+
+        flowContainer.innerHTML = "";
+        const newPEl = document.createElement("p");
+        newPEl.className = "whitespace-pre-wrap";
+        newPEl.style.marginBottom = `${settings.blockGap}mm`;
+        if (settings.mode === "column") {
+          newPEl.style.breakInside = "avoid";
+        }
+        newPEl.textContent = item.text;
+        flowContainer.appendChild(newPEl);
+      } else {
+        currentPages[currentPageIdx].push(item);
+      }
+    }
+
+    setPages(currentPages);
+  }, [allParagraphs, settings, ready]);
+
+  const totalWords = useMemo(
+    () =>
+      blocks.reduce(
+        (sum, b) =>
+          sum + b.text.trim().split(/\s+/).filter(Boolean).length,
+        0
+      ),
+    [blocks]
+  );
+
+  const exportPdf = () => window.print();
+
+  if (!ready) return null;
+
+  // Settings Panel Component
+  const SettingsPanelContent = (
+    <div className="flex flex-col gap-5">
+      <FieldGroup className="rounded-xl border border-zinc-200 bg-white p-4 shadow-xs">
+        <p className="text-[11px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+          Flow &amp; Layout
+        </p>
+        <Field>
+          <FieldLabel>Flow direction</FieldLabel>
+          <div className="flex gap-1 border border-zinc-200 rounded-lg p-1 bg-zinc-50">
+            <button
+              type="button"
+              onClick={() => set("mode", "column")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all ${
+                settings.mode === "column"
+                  ? "bg-zinc-900 text-white shadow-xs"
+                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+              }`}
+            >
+              <Columns className="size-3.5" />
+              Column wise
+            </button>
+            <button
+              type="button"
+              onClick={() => set("mode", "row")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-md transition-all ${
+                settings.mode === "row"
+                  ? "bg-zinc-900 text-white shadow-xs"
+                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+              }`}
+            >
+              <Rows className="size-3.5" />
+              Row wise
+            </button>
+          </div>
+          <FieldDescription className="mt-1 text-[11px]">
+            {settings.mode === "column"
+              ? "Text flows down each column vertically, then into the next column."
+              : "Text flows across full-width rows down the page."}
+          </FieldDescription>
+        </Field>
+
+        <Field>
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="font-size">Font size</FieldLabel>
+            <span className="font-mono text-xs font-bold text-zinc-700">
+              {settings.fontSize} pt
+            </span>
+          </div>
+          <Slider
+            id="font-size"
+            min={6}
+            max={14}
+            step={0.5}
+            value={settings.fontSize}
+            onValueChange={(v) => set("fontSize", v as number)}
+          />
+        </Field>
+
+        <Field>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <FieldLabel htmlFor="auto-cols">Auto columns</FieldLabel>
+              <Sparkle className="size-3 text-zinc-400" aria-hidden />
+            </div>
+            <Switch
+              id="auto-cols"
+              checked={autoColumns}
+              onCheckedChange={(c) => setAutoColumns(Boolean(c))}
+            />
+          </div>
+          {settings.mode === "column" && !autoColumns && (
+            <div className="flex flex-col gap-1.5 mt-2">
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="col-count">Columns</FieldLabel>
+                <span className="font-mono text-xs font-bold text-zinc-700">
+                  {settings.columnCount}
+                </span>
+              </div>
+              <Slider
+                id="col-count"
+                min={1}
+                max={4}
+                step={1}
+                value={settings.columnCount}
+                onValueChange={(v) => set("columnCount", v as number)}
+              />
+            </div>
+          )}
+        </Field>
+
+        <Field>
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="line-height">Line height</FieldLabel>
+            <span className="font-mono text-xs font-bold text-zinc-700">
+              {settings.lineHeight.toFixed(2)}
+            </span>
+          </div>
+          <Slider
+            id="line-height"
+            min={1}
+            max={2}
+            step={0.05}
+            value={settings.lineHeight}
+            onValueChange={(v) => set("lineHeight", v as number)}
+          />
+        </Field>
+      </FieldGroup>
+
+      <FieldGroup className="rounded-xl border border-zinc-200 bg-white p-4 shadow-xs">
+        <p className="text-[11px] font-bold tracking-[0.14em] text-zinc-400 uppercase">
+          Spacing &amp; Type
+        </p>
+
+        <Field>
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="margin">Page margin</FieldLabel>
+            <span className="font-mono text-xs font-bold text-zinc-700">
+              {settings.margin} mm
+            </span>
+          </div>
+          <Slider
+            id="margin"
+            min={5}
+            max={30}
+            step={1}
+            value={settings.margin}
+            onValueChange={(v) => set("margin", v as number)}
+          />
+        </Field>
+
+        {settings.mode === "column" && (
+          <Field>
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="col-gap">Column gap</FieldLabel>
+              <span className="font-mono text-xs font-bold text-zinc-700">
+                {settings.columnGap} mm
+              </span>
+            </div>
+            <Slider
+              id="col-gap"
+              min={2}
+              max={20}
+              step={1}
+              value={settings.columnGap}
+              onValueChange={(v) => set("columnGap", v as number)}
+            />
+          </Field>
+        )}
+
+        <Field>
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="block-gap">Answer spacing</FieldLabel>
+            <span className="font-mono text-xs font-bold text-zinc-700">
+              {settings.blockGap} mm
+            </span>
+          </div>
+          <Slider
+            id="block-gap"
+            min={0}
+            max={10}
+            step={0.5}
+            value={settings.blockGap}
+            onValueChange={(v) => set("blockGap", v as number)}
+          />
+        </Field>
+
+        <Separator className="my-1" />
+
+        <Field>
+          <FieldLabel htmlFor="font">Font family</FieldLabel>
+          <Select
+            value={settings.font}
+            onValueChange={(v) => set("font", v as Settings["font"])}
+          >
+            <SelectTrigger id="font" className="w-full h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sans">Geist Sans</SelectItem>
+              <SelectItem value="serif">Georgia Serif</SelectItem>
+              <SelectItem value="mono">Geist Mono</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field>
+          <div className="flex items-center justify-between">
+            <FieldLabel htmlFor="justify">Justify text</FieldLabel>
+            <Switch
+              id="justify"
+              checked={settings.justify}
+              onCheckedChange={(c) => set("justify", Boolean(c))}
+            />
+          </div>
+        </Field>
+      </FieldGroup>
+    </div>
+  );
+
+  return (
+    <div className="min-h-[100dvh] bg-zinc-50 text-zinc-950">
+      {/* Hidden A4 Measurement container */}
+      <div
+        ref={measurerRef}
+        className="print-hidden"
+        style={{
+          position: "fixed",
+          top: "-9999px",
+          left: "-9999px",
+          width: "210mm",
+          height: "297mm",
+          boxSizing: "border-box",
+          visibility: "hidden",
+          pointerEvents: "none",
+          zIndex: -1,
+        }}
+      />
+
+      {/* Floating Progress Bar during AI Format All */}
+      {isFormattingAll && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-zinc-950 text-white px-4 py-3 rounded-2xl shadow-2xl border border-purple-500/50 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="relative flex items-center justify-center">
+            <CircleNotch className="size-6 animate-spin text-purple-400" />
+            <Sparkle className="size-3 absolute text-pink-400 animate-pulse" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs font-bold text-purple-200 flex items-center gap-1.5">
+              <span>NVIDIA AI Formatting</span>
+              <span className="inline-block size-1.5 rounded-full bg-purple-400 animate-ping" />
+            </span>
+            <span className="text-[11px] text-zinc-400">Structuring points with '-' &amp; numbering...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Sticky App Header */}
+      <header className="print-hidden sticky top-0 z-30 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 w-full max-w-[1400px] items-center justify-between px-3 sm:px-6">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-base font-bold tracking-tight text-zinc-900 sm:text-lg">
+              chutka-maker
+            </h1>
+            <Badge variant="secondary" className="font-mono text-[11px] bg-zinc-100 text-zinc-700">
+              {pages.length} page{pages.length > 1 ? "s" : ""} · A4
+            </Badge>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button
+              variant={showSettingsSidebar ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setShowSettingsSidebar((prev) => !prev)}
+              title="Toggle Live Settings Sidebar"
+              className="text-xs"
+            >
+              <SlidersHorizontal className="size-4" />
+              <span className="hidden sm:inline">
+                {showSettingsSidebar ? "Hide Settings" : "Layout Settings"}
+              </span>
+            </Button>
+
+            <Button
+              variant={anyHasMarkdown ? "default" : "outline"}
+              size="sm"
+              disabled={!anyHasMarkdown}
+              onClick={cleanAllMarkdown}
+              title="Remove markdown formatting (#, **, code, etc.)"
+              className={anyHasMarkdown ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm text-xs" : "opacity-60 text-xs"}
+            >
+              <Broom className="size-4" />
+              <span className="hidden sm:inline">Clean Markdown</span>
+            </Button>
+
+            <Button size="sm" onClick={exportPdf} className="bg-zinc-900 text-white hover:bg-zinc-800 text-xs">
+              <Download className="size-4" />
+              <span className="hidden sm:inline">Export PDF</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Feedback & Error Banners */}
+        {cleanFeedback && (
+          <div className="bg-emerald-600 text-white text-xs font-medium py-1 px-4 text-center flex items-center justify-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+            <Check className="size-3.5" />
+            {cleanFeedback}
+          </div>
+        )}
+
+        {aiError && (
+          <div className="bg-amber-600 text-white text-xs font-medium py-1.5 px-4 text-center flex items-center justify-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+            <Warning className="size-4 shrink-0" />
+            <span>{aiError}</span>
+          </div>
+        )}
+
+        {/* Tab Switcher */}
+        <div className="mx-auto w-full max-w-[1400px] px-3 sm:px-6 pb-2 pt-1">
+          <nav className="flex items-center gap-1 border-b border-zinc-200/60 pb-1">
+            <button
+              onClick={() => setActiveTab("write")}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+                activeTab === "write"
+                  ? "bg-zinc-900 text-white shadow-sm"
+                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+              }`}
+            >
+              <NotePencil className="size-4" />
+              <span>Write Answers</span>
+              <Badge
+                variant="secondary"
+                className={`ml-1 text-[10px] px-1.5 py-0 ${
+                  activeTab === "write"
+                    ? "bg-zinc-800 text-zinc-200"
+                    : "bg-zinc-200 text-zinc-700"
+                }`}
+              >
+                {blocks.length}
+              </Badge>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("preview")}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+                activeTab === "preview"
+                  ? "bg-zinc-900 text-white shadow-sm"
+                  : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+              }`}
+            >
+              <FileText className="size-4" />
+              <span>Preview</span>
+              <Badge
+                variant="secondary"
+                className={`ml-1 text-[10px] px-1.5 py-0 ${
+                  activeTab === "preview"
+                    ? "bg-zinc-800 text-zinc-200"
+                    : "bg-zinc-200 text-zinc-700"
+                }`}
+              >
+                {pages.length} A4
+              </Badge>
+            </button>
+          </nav>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="print-area mx-auto w-full max-w-[1400px] px-3 sm:px-6 py-4 sm:py-6">
+        {/* TAB 1: WRITE ANSWERS */}
+        {activeTab === "write" && (
+          <div className="flex flex-col lg:flex-row gap-6 w-full items-start">
+            {/* Optional Settings Sidebar in Write view */}
+            {showSettingsSidebar && (
+              <aside className="print-hidden w-full lg:w-72 shrink-0 bg-white rounded-2xl border border-zinc-200/80 p-4 shadow-xs sticky lg:top-20 z-10 animate-in fade-in slide-in-from-left-2 duration-200">
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-100">
+                  <div className="flex items-center gap-1.5">
+                    <SlidersHorizontal className="size-4 text-zinc-700" />
+                    <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
+                      Layout Settings
+                    </h3>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowSettingsSidebar(false)}
+                    className="text-zinc-400 hover:text-zinc-700"
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+                {SettingsPanelContent}
+              </aside>
+            )}
+
+            {/* Answer Cards */}
+            <section className="print-hidden flex-1 flex flex-col gap-4 w-full">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-xl border border-zinc-200/80 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold tracking-tight text-zinc-900">
+                    Answers List
+                  </h2>
+                  <span className="text-xs text-zinc-500 font-mono">
+                    {totalWords} total words
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isFormattingAll || blocks.every((b) => !b.text.trim())}
+                    onClick={formatAllWithAI}
+                    className="text-purple-700 border-purple-300 bg-purple-50 hover:bg-purple-100 text-xs font-medium"
+                    title="Auto-format question numbering, points (-), & layout for all answers using NVIDIA AI"
+                  >
+                    {isFormattingAll ? (
+                      <CircleNotch className="size-3.5 animate-spin text-purple-700" />
+                    ) : (
+                      <Sparkle className="size-3.5 text-purple-600 animate-pulse" />
+                    )}
+                    {isFormattingAll ? "AI Formatting..." : "AI Format All"}
+                  </Button>
+
+                  {anyHasMarkdown && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={cleanAllMarkdown}
+                      className="text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 text-xs"
+                    >
+                      <Broom className="size-3.5" />
+                      Clean Markdown
+                    </Button>
+                  )}
+
+                  <Button variant="outline" size="sm" onClick={addBlock}>
+                    <Plus className="size-4" />
+                    Add Answer
+                  </Button>
+
+                  {blocks.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearAllBlocks}
+                      className="text-zinc-400 hover:text-red-600 hover:bg-red-50 text-xs"
+                    >
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {blocks.length === 0 ? (
+                <Empty className="rounded-2xl border border-dashed border-zinc-300 bg-white py-12">
+                  <EmptyHeader>
+                    <EmptyTitle>No answers yet</EmptyTitle>
+                    <EmptyDescription>
+                      Write or paste your first answer below. Your text will be automatically formatted onto A4 sheets.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <Button variant="outline" size="sm" onClick={addBlock}>
+                    <Plus className="size-4" />
+                    Add First Answer
+                  </Button>
+                </Empty>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {blocks.map((b, i) => {
+                    const blockHasMarkdown = hasMarkdown(b.text);
+                    const wordCount = b.text.trim().split(/\s+/).filter(Boolean).length;
+                    const isFormattingThis = formattingId === b.id;
+
+                    return (
+                      <div
+                        key={b.id}
+                        className={`group relative rounded-xl border transition-all duration-300 shadow-xs ${
+                          isFormattingThis
+                            ? "border-purple-500 ring-2 ring-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.25)] bg-purple-50/20"
+                            : b.id === activeId
+                            ? "border-zinc-500 ring-2 ring-zinc-950/5 bg-white"
+                            : "border-zinc-200 hover:border-zinc-300 bg-white"
+                        }`}
+                        onClick={() => setActiveId(b.id)}
+                      >
+                        {/* Top Animated Glowing Scanner Bar during AI Formatting */}
+                        {isFormattingThis && (
+                          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-500 animate-pulse rounded-t-xl z-20" />
+                        )}
+
+                        <div className="flex items-center justify-between border-b border-zinc-100 px-3.5 py-2 bg-zinc-50/50 rounded-t-xl">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-zinc-700">
+                              Answer #{String(i + 1).padStart(2, "0")}
+                            </span>
+                            <span className="font-mono text-[11px] text-zinc-400">
+                              · {wordCount} word{wordCount === 1 ? "" : "s"}
+                            </span>
+
+                            {isFormattingThis && (
+                              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-700 bg-purple-100/90 px-2 py-0.5 rounded-full animate-pulse border border-purple-300">
+                                <Sparkle className="size-3 animate-spin text-purple-600" />
+                                AI Structuring Points...
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {/* Per-Card AI Format Button */}
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              disabled={isFormattingThis || !b.text.trim()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                formatBlockWithAI(b.id);
+                              }}
+                              className={`h-7 px-2 text-[11px] font-medium transition-all ${
+                                isFormattingThis
+                                  ? "text-purple-700 border-purple-400 bg-purple-100 shadow-sm"
+                                  : "text-purple-700 border-purple-300 bg-purple-50 hover:bg-purple-100"
+                              }`}
+                              title="Auto-format question numbering, points (-), & layout with NVIDIA AI"
+                            >
+                              {isFormattingThis ? (
+                                <CircleNotch className="size-3 animate-spin text-purple-700" />
+                              ) : (
+                                <Sparkle className="size-3 text-purple-600" />
+                              )}
+                              {isFormattingThis ? "Formatting..." : "AI Format"}
+                            </Button>
+
+                            {blockHasMarkdown && (
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cleanBlockMarkdown(b.id);
+                                }}
+                                className="h-7 px-2 text-[11px] text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
+                                title="Strip markdown symbols from this answer"
+                              >
+                                <Broom className="size-3" />
+                                Clean Markdown
+                              </Button>
+                            )}
+
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label={`Delete answer ${i + 1}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeBlock(b.id);
+                              }}
+                              className="text-zinc-400 hover:text-red-600 hover:bg-red-50"
+                            >
+                              <Trash className="size-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <Textarea
+                          value={b.text}
+                          placeholder="Paste or write your answer here..."
+                          className={`min-h-[110px] resize-y border-0 text-sm sm:text-base leading-relaxed p-3.5 shadow-none focus-visible:ring-0 rounded-b-xl transition-colors ${
+                            isFormattingThis ? "bg-purple-50/30 text-purple-950" : ""
+                          }`}
+                          onChange={(e) => {
+                            setActiveId(b.id);
+                            updateActiveText(e.target.value);
+                          }}
+                          onFocus={() => setActiveId(b.id)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* TAB 2: LIVE A4 PREVIEW WITH LIVE SETTINGS SIDEBAR */}
+        {activeTab === "preview" && (
+          <div className="flex flex-col lg:flex-row gap-6 w-full items-start">
+            {/* Live Settings Sidebar */}
+            {showSettingsSidebar && (
+              <aside className="print-hidden w-full lg:w-72 shrink-0 bg-white rounded-2xl border border-zinc-200/80 p-4 shadow-sm sticky lg:top-20 z-10 animate-in fade-in slide-in-from-left-2 duration-200">
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-100">
+                  <div className="flex items-center gap-1.5">
+                    <SlidersHorizontal className="size-4 text-zinc-700" />
+                    <h3 className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
+                      Live Layout Settings
+                    </h3>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => setShowSettingsSidebar(false)}
+                    className="text-zinc-400 hover:text-zinc-700"
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+
+                {SettingsPanelContent}
+              </aside>
+            )}
+
+            {/* Live A4 Preview Stack */}
+            <section
+              ref={previewAreaRef}
+              className="print-pages flex-1 flex flex-col items-center gap-6 rounded-2xl bg-zinc-200/70 p-4 sm:p-6 min-h-[70vh] w-full"
+            >
+              {/* Viewport Toolbar */}
+              <div className="print-hidden flex flex-wrap items-center justify-between gap-3 w-full bg-white p-2.5 rounded-xl border border-zinc-200 shadow-xs">
+                <div className="flex items-center gap-2">
+                  {!showSettingsSidebar && (
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => setShowSettingsSidebar(true)}
+                      className="text-xs bg-zinc-50 border-zinc-300"
+                    >
+                      <SlidersHorizontal className="size-3.5" />
+                      Show Settings
+                    </Button>
+                  )}
+                  <span className="text-xs font-semibold text-zinc-600">Zoom:</span>
+                  <div className="flex items-center gap-1">
+                    {(["auto", "100", "75", "50"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setZoomMode(mode)}
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                          zoomMode === mode
+                            ? "bg-zinc-900 text-white shadow-2xs"
+                            : "text-zinc-600 hover:bg-zinc-100"
+                        }`}
+                      >
+                        {mode === "auto" ? "Auto Fit" : `${mode}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="font-mono text-xs bg-zinc-50">
+                    {pages.length} Sheet{pages.length > 1 ? "s" : ""} · 210×297 mm
+                  </Badge>
+                  <Button size="xs" onClick={exportPdf} className="bg-zinc-900 text-white">
+                    <Download className="size-3.5" />
+                    Print / PDF
+                  </Button>
+                </div>
+              </div>
+
+              {/* Multi-page A4 Display Stack */}
+              <div className="flex flex-col items-center gap-8 w-full">
+                {pages.map((pageItems, pageIdx) => (
+                  <div key={pageIdx} className="flex flex-col items-center gap-2 w-full">
+                    <div className="print-hidden flex items-center gap-2">
+                      <Badge
+                        variant="secondary"
+                        className="bg-white/90 backdrop-blur font-mono text-[11px] border border-zinc-200/80 text-zinc-700 shadow-xs"
+                      >
+                        Page {pageIdx + 1} of {pages.length}
+                      </Badge>
+                    </div>
+
+                    {/* Responsive scale wrapper */}
+                    <div
+                      className="relative transition-all duration-150 flex justify-center"
+                      style={{
+                        width: `${autoScale * 210}mm`,
+                        height: `${autoScale * 297}mm`,
+                      }}
+                    >
+                      <div
+                        className="a4-sheet shadow-2xl rounded-xs border border-zinc-200"
+                        style={{
+                          transform: `scale(${autoScale})`,
+                          transformOrigin: "top left",
+                        }}
+                      >
+                        <div
+                          className="a4-flow"
+                          style={{
+                            padding: `${settings.margin}mm`,
+                            columnCount: settings.mode === "column" ? settings.columnCount : 1,
+                            columnGap: settings.mode === "column" ? `${settings.columnGap}mm` : "0mm",
+                            fontSize: `${settings.fontSize}pt`,
+                            lineHeight: settings.lineHeight,
+                            fontFamily: FONT_STACKS[settings.font],
+                            textAlign: settings.justify ? "justify" : "left",
+                            hyphens: settings.justify ? "auto" : "manual",
+                            display: "block",
+                          }}
+                        >
+                          {pageItems.length > 0 ? (
+                            pageItems.map((item) => (
+                              <p
+                                key={item.id}
+                                className="whitespace-pre-wrap"
+                                style={{
+                                  marginBottom: `${settings.blockGap}mm`,
+                                  ...(settings.mode === "column" ? { breakInside: "avoid" } : {}),
+                                }}
+                              >
+                                {item.text}
+                              </p>
+                            ))
+                          ) : (
+                            <p className="text-zinc-400 italic" style={{ fontSize: "10pt" }}>
+                              Your answers will appear here, formatted onto this A4 sheet.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
