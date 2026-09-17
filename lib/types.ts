@@ -21,13 +21,13 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: "column",
-  columnCount: 2,
-  fontSize: 9,
-  lineHeight: 1.35,
-  margin: 3,
-  columnGap: 4,
-  blockGap: 2,
-  font: "sans",
+  columnCount: 4,
+  fontSize: 7,
+  lineHeight: 1.00,
+  margin: 2,
+  columnGap: 2,
+  blockGap: 3.5,
+  font: "mono",
   justify: false,
 }
 
