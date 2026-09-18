@@ -390,7 +390,16 @@ export default function ChutkaMaker() {
     [blocks]
   );
 
-  const exportPdf = () => window.print();
+  const exportPdf = () => {
+    if (activeTab !== "preview") {
+      setActiveTab("preview");
+      setTimeout(() => {
+        window.print();
+      }, 100);
+    } else {
+      window.print();
+    }
+  };
 
   if (!ready) return null;
 
@@ -588,7 +597,7 @@ export default function ChutkaMaker() {
   );
 
   return (
-    <div className="h-[100dvh] bg-zinc-50 text-zinc-950 flex flex-col overflow-hidden">
+    <div className="h-[100dvh] bg-zinc-50 text-zinc-950 flex flex-col overflow-hidden print:h-auto print:overflow-visible print:block print:bg-white">
       {/* Hidden A4 Measurement container */}
       <div
         ref={measurerRef}
@@ -740,10 +749,13 @@ export default function ChutkaMaker() {
       </header>
 
       {/* Main Container - Fixed 100vh shell without page scrollbar */}
-      <main className="print-area mx-auto w-full max-w-[1400px] px-3 sm:px-6 py-3 flex-1 min-h-0 overflow-hidden">
+      <main className="print-area mx-auto w-full max-w-[1400px] px-3 sm:px-6 py-3 flex-1 min-h-0 overflow-hidden print:h-auto print:overflow-visible print:block print:p-0 print:m-0 print:max-w-none">
         {/* TAB 1: WRITE ANSWERS */}
-        {activeTab === "write" && (
-          <div className="flex flex-col lg:flex-row gap-6 w-full h-full items-start overflow-hidden">
+        <div
+          className={`flex flex-col lg:flex-row gap-6 w-full h-full items-start overflow-hidden print-hidden ${
+            activeTab === "write" ? "" : "hidden"
+          }`}
+        >
             {/* Settings Sidebar in Write view - Non-scrolling */}
             {showSettingsSidebar && (
               <aside className="print-hidden w-full lg:w-72 shrink-0 h-full overflow-hidden bg-white rounded-2xl border border-zinc-200/80 p-3.5 shadow-xs flex flex-col">
@@ -962,12 +974,14 @@ export default function ChutkaMaker() {
                 </div>
               )}
             </section>
-          </div>
-        )}
+        </div>
 
         {/* TAB 2: LIVE A4 PREVIEW WITH LIVE SETTINGS SIDEBAR */}
-        {activeTab === "preview" && (
-          <div className="flex flex-col lg:flex-row gap-6 w-full h-full items-start overflow-hidden">
+        <div
+          className={`flex flex-col lg:flex-row gap-6 w-full h-full items-start overflow-hidden print:block print:h-auto print:overflow-visible ${
+            activeTab === "preview" ? "" : "hidden print:block"
+          }`}
+        >
             {/* Live Settings Sidebar - Non-scrolling */}
             {showSettingsSidebar && (
               <aside className="print-hidden w-full lg:w-72 shrink-0 h-full overflow-hidden bg-white rounded-2xl border border-zinc-200/80 p-3.5 shadow-xs flex flex-col">
@@ -1051,7 +1065,7 @@ export default function ChutkaMaker() {
               </div>
 
               {/* Multi-page A4 Display Stack */}
-              <div className="flex flex-col items-center gap-8 w-full pb-6">
+              <div className="print-page-stack flex flex-col items-center gap-8 w-full pb-6 print:gap-0 print:pb-0">
                 {pages.map((pageItems, pageIdx) => {
                   const firstItem = pageItems[0];
                   const blockIndex = firstItem
@@ -1060,7 +1074,7 @@ export default function ChutkaMaker() {
                   const hasContent = pageItems.some((item) => item.text.trim());
 
                   return (
-                    <div key={pageIdx} className="flex flex-col items-center gap-2 w-full">
+                    <div key={pageIdx} className="print-page-item flex flex-col items-center gap-2 w-full print:gap-0">
                       <div className="print-hidden flex items-center gap-2">
                         <Badge
                           variant="secondary"
@@ -1073,7 +1087,7 @@ export default function ChutkaMaker() {
 
                       {/* Responsive scale wrapper */}
                       <div
-                        className="relative transition-all duration-150 flex justify-center"
+                        className="print-scale-wrapper relative transition-all duration-150 flex justify-center"
                         style={{
                           width: `${autoScale * 210}mm`,
                           height: `${autoScale * 297}mm`,
@@ -1130,8 +1144,7 @@ export default function ChutkaMaker() {
                 })}
               </div>
             </section>
-          </div>
-        )}
+        </div>
       </main>
 
       {/* App Footer - Permanently fixed at bottom of 100vh shell */}
