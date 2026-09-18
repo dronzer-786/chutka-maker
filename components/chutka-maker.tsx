@@ -7,7 +7,6 @@ import {
   Download,
   Plus,
   Trash,
-  TextAa,
   Sparkle,
   Broom,
   NotePencil,
@@ -22,13 +21,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
   Field,
   FieldLabel,
-  FieldDescription,
   FieldGroup,
 } from "@/components/ui/field";
 import {
@@ -131,6 +128,7 @@ export default function ChutkaMaker() {
   const suggestedColumns = settings.fontSize <= 8 ? 3 : settings.fontSize <= 10 ? 2 : 1;
   useEffect(() => {
     if (autoColumns) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSettings((s) =>
         s.columnCount === suggestedColumns ? s : { ...s, columnCount: suggestedColumns }
       );
@@ -251,8 +249,8 @@ export default function ChutkaMaker() {
         setCleanFeedback("AI structured points & formatting cleanly!");
         setTimeout(() => setCleanFeedback(null), 2500);
       }
-    } catch (err: any) {
-      setAiError(err?.message || "Failed to communicate with AI server.");
+    } catch (err: unknown) {
+      setAiError(err instanceof Error ? err.message : "Failed to communicate with AI server.");
       setTimeout(() => setAiError(null), 5000);
     } finally {
       setFormattingId(null);
@@ -290,8 +288,8 @@ export default function ChutkaMaker() {
       }
       setCleanFeedback("AI auto-formatted points for all answers!");
       setTimeout(() => setCleanFeedback(null), 2500);
-    } catch (err: any) {
-      setAiError(err?.message || "Failed to communicate with AI server.");
+    } catch (err: unknown) {
+      setAiError(err instanceof Error ? err.message : "Failed to communicate with AI server.");
       setTimeout(() => setAiError(null), 5000);
     } finally {
       setFormattingId(null);
@@ -299,35 +297,16 @@ export default function ChutkaMaker() {
     }
   };
 
-  // Convert answer blocks to paragraph items for measurement
-  const allParagraphs = useMemo(() => {
-    const items: PageItem[] = [];
-    blocks.forEach((b) => {
-      const trimmed = b.text.trim();
-      if (!trimmed) return;
-      const paras = trimmed.split(/\n\n+/);
-      paras.forEach((p, pIdx) => {
-        items.push({
-          id: `${b.id}-${pIdx}`,
-          blockId: b.id,
-          text: p,
-        });
-      });
-    });
-    return items;
-  }, [blocks]);
-
-  // Synchronous DOM pagination measurement
+  // DOM pagination measurement: each answer block starts on a fresh A4 page
   useEffect(() => {
     if (!ready) return;
     const measurer = measurerRef.current;
-    if (!measurer || allParagraphs.length === 0) {
+    if (!measurer || blocks.length === 0) {
       setPages([[]]);
       return;
     }
 
-    let currentPages: PageItem[][] = [[]];
-    let currentPageIdx = 0;
+    const currentPages: PageItem[][] = [];
 
     measurer.innerHTML = "";
     const flowContainer = document.createElement("div");
@@ -342,37 +321,64 @@ export default function ChutkaMaker() {
     flowContainer.style.display = "block";
     measurer.appendChild(flowContainer);
 
-    for (const item of allParagraphs) {
-      const pEl = document.createElement("p");
-      pEl.className = "whitespace-pre-wrap";
-      pEl.style.marginBottom = `${settings.blockGap}mm`;
-      if (settings.mode === "column") {
-        pEl.style.breakInside = "avoid";
+    for (let bIdx = 0; bIdx < blocks.length; bIdx++) {
+      const b = blocks[bIdx];
+      const trimmed = b.text.trim();
+
+      if (!trimmed) {
+        // Empty answer block creates a dedicated A4 page
+        currentPages.push([{ id: `${b.id}-empty`, blockId: b.id, text: "" }]);
+        continue;
       }
-      pEl.textContent = item.text;
-      flowContainer.appendChild(pEl);
 
-      if (flowContainer.scrollHeight > flowContainer.clientHeight + 2 && currentPages[currentPageIdx].length > 0) {
-        flowContainer.removeChild(pEl);
-        currentPageIdx++;
-        currentPages[currentPageIdx] = [item];
+      const paras = trimmed.split(/\n\n+/);
+      let pageForThisBlock: PageItem[] = [];
 
-        flowContainer.innerHTML = "";
-        const newPEl = document.createElement("p");
-        newPEl.className = "whitespace-pre-wrap";
-        newPEl.style.marginBottom = `${settings.blockGap}mm`;
+      flowContainer.innerHTML = "";
+
+      for (let pIdx = 0; pIdx < paras.length; pIdx++) {
+        const text = paras[pIdx];
+        const item: PageItem = {
+          id: `${b.id}-${pIdx}`,
+          blockId: b.id,
+          text,
+        };
+
+        const pEl = document.createElement("p");
+        pEl.className = "whitespace-pre-wrap";
+        pEl.style.marginBottom = `${settings.blockGap}mm`;
         if (settings.mode === "column") {
-          newPEl.style.breakInside = "avoid";
+          pEl.style.breakInside = "avoid";
         }
-        newPEl.textContent = item.text;
-        flowContainer.appendChild(newPEl);
-      } else {
-        currentPages[currentPageIdx].push(item);
+        pEl.textContent = text;
+        flowContainer.appendChild(pEl);
+
+        // If this paragraph causes overflow and there is already content on this A4 page
+        if (flowContainer.scrollHeight > flowContainer.clientHeight + 2 && pageForThisBlock.length > 0) {
+          currentPages.push(pageForThisBlock);
+          pageForThisBlock = [item];
+
+          flowContainer.innerHTML = "";
+          const newPEl = document.createElement("p");
+          newPEl.className = "whitespace-pre-wrap";
+          newPEl.style.marginBottom = `${settings.blockGap}mm`;
+          if (settings.mode === "column") {
+            newPEl.style.breakInside = "avoid";
+          }
+          newPEl.textContent = text;
+          flowContainer.appendChild(newPEl);
+        } else {
+          pageForThisBlock.push(item);
+        }
+      }
+
+      if (pageForThisBlock.length > 0) {
+        currentPages.push(pageForThisBlock);
       }
     }
 
-    setPages(currentPages);
-  }, [allParagraphs, settings, ready]);
+    setPages(currentPages.length > 0 ? currentPages : [[]]);
+  }, [blocks, settings, ready]);
 
   const totalWords = useMemo(
     () =>
@@ -606,7 +612,7 @@ export default function ChutkaMaker() {
           <CircleNotch className="size-4 animate-spin text-zinc-300 shrink-0" />
           <div className="flex flex-col">
             <span className="text-xs font-semibold text-zinc-100">AI Formatting in progress</span>
-            <span className="text-[11px] font-mono text-zinc-400">Structuring points with '-' &amp; numbering...</span>
+            <span className="text-[11px] font-mono text-zinc-400">Structuring points with &apos;-&apos; &amp; numbering...</span>
           </div>
         </div>
       )}
@@ -624,6 +630,18 @@ export default function ChutkaMaker() {
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={addBlock}
+              title="Add a new answer on a new A4 page"
+              className="text-xs font-semibold bg-white border-zinc-300 text-zinc-800 hover:bg-zinc-100 shadow-2xs"
+            >
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">New Answer (New Page)</span>
+              <span className="sm:hidden">New Page</span>
+            </Button>
+
             <Button
               variant={showSettingsSidebar ? "secondary" : "outline"}
               size="sm"
@@ -789,9 +807,15 @@ export default function ChutkaMaker() {
                     </Button>
                   )}
 
-                  <Button variant="outline" size="sm" onClick={addBlock}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={addBlock}
+                    className="text-xs font-semibold border-zinc-300 text-zinc-800 hover:bg-zinc-100 shadow-2xs"
+                    title="Add a new answer box on a new A4 page"
+                  >
                     <Plus className="size-4" />
-                    Add Answer
+                    New Answer (New Page)
                   </Button>
 
                   {blocks.length > 0 && (
@@ -812,12 +836,12 @@ export default function ChutkaMaker() {
                   <EmptyHeader>
                     <EmptyTitle>No answers yet</EmptyTitle>
                     <EmptyDescription>
-                      Write or paste your first answer below. Your text will be automatically formatted onto A4 sheets.
+                      Write or paste your first answer below. Each answer box will be placed on its own A4 page.
                     </EmptyDescription>
                   </EmptyHeader>
-                  <Button variant="outline" size="sm" onClick={addBlock}>
+                  <Button variant="outline" size="sm" onClick={addBlock} className="font-semibold">
                     <Plus className="size-4" />
-                    Add First Answer
+                    Add First Answer (Page 1)
                   </Button>
                 </Empty>
               ) : (
@@ -848,6 +872,9 @@ export default function ChutkaMaker() {
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-xs font-bold text-zinc-700">
                               Answer #{String(i + 1).padStart(2, "0")}
+                            </span>
+                            <span className="font-mono text-[10px] font-semibold text-zinc-600 bg-zinc-200/80 px-1.5 py-0.5 rounded">
+                              Page {i + 1} · A4
                             </span>
                             <span className="font-mono text-[11px] text-zinc-400">
                               · {wordCount} word{wordCount === 1 ? "" : "s"}
@@ -1003,6 +1030,16 @@ export default function ChutkaMaker() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={addBlock}
+                    className="text-xs bg-zinc-50 border-zinc-300 hover:bg-zinc-100 font-medium"
+                    title="Add a new answer on a new A4 page"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>New Answer (New Page)</span>
+                  </Button>
                   <Badge variant="outline" className="font-mono text-xs bg-zinc-50">
                     {pages.length} Sheet{pages.length > 1 ? "s" : ""} · 210×297 mm
                   </Badge>
@@ -1015,69 +1052,82 @@ export default function ChutkaMaker() {
 
               {/* Multi-page A4 Display Stack */}
               <div className="flex flex-col items-center gap-8 w-full pb-6">
-                {pages.map((pageItems, pageIdx) => (
-                  <div key={pageIdx} className="flex flex-col items-center gap-2 w-full">
-                    <div className="print-hidden flex items-center gap-2">
-                      <Badge
-                        variant="secondary"
-                        className="bg-white/90 backdrop-blur font-mono text-[11px] border border-zinc-200/80 text-zinc-700 shadow-xs"
-                      >
-                        Page {pageIdx + 1} of {pages.length}
-                      </Badge>
-                    </div>
+                {pages.map((pageItems, pageIdx) => {
+                  const firstItem = pageItems[0];
+                  const blockIndex = firstItem
+                    ? blocks.findIndex((b) => b.id === firstItem.blockId)
+                    : pageIdx;
+                  const hasContent = pageItems.some((item) => item.text.trim());
 
-                    {/* Responsive scale wrapper */}
-                    <div
-                      className="relative transition-all duration-150 flex justify-center"
-                      style={{
-                        width: `${autoScale * 210}mm`,
-                        height: `${autoScale * 297}mm`,
-                      }}
-                    >
+                  return (
+                    <div key={pageIdx} className="flex flex-col items-center gap-2 w-full">
+                      <div className="print-hidden flex items-center gap-2">
+                        <Badge
+                          variant="secondary"
+                          className="bg-white/90 backdrop-blur font-mono text-[11px] border border-zinc-200/80 text-zinc-700 shadow-xs"
+                        >
+                          Page {pageIdx + 1} of {pages.length}
+                          {blockIndex !== -1 && ` · Answer #${blockIndex + 1}`}
+                        </Badge>
+                      </div>
+
+                      {/* Responsive scale wrapper */}
                       <div
-                        className="a4-sheet shadow-2xl rounded-xs border border-zinc-200"
+                        className="relative transition-all duration-150 flex justify-center"
                         style={{
-                          transform: `scale(${autoScale})`,
-                          transformOrigin: "top left",
+                          width: `${autoScale * 210}mm`,
+                          height: `${autoScale * 297}mm`,
                         }}
                       >
                         <div
-                          className="a4-flow"
+                          className="a4-sheet shadow-2xl rounded-xs border border-zinc-200"
                           style={{
-                            padding: `${settings.margin}mm`,
-                            columnCount: settings.mode === "column" ? settings.columnCount : 1,
-                            columnGap: settings.mode === "column" ? `${settings.columnGap}mm` : "0mm",
-                            fontSize: `${settings.fontSize}pt`,
-                            lineHeight: settings.lineHeight,
-                            fontFamily: FONT_STACKS[settings.font],
-                            textAlign: settings.justify ? "justify" : "left",
-                            hyphens: settings.justify ? "auto" : "manual",
-                            display: "block",
+                            transform: `scale(${autoScale})`,
+                            transformOrigin: "top left",
                           }}
                         >
-                          {pageItems.length > 0 ? (
-                            pageItems.map((item) => (
-                              <p
-                                key={item.id}
-                                className="whitespace-pre-wrap"
-                                style={{
-                                  marginBottom: `${settings.blockGap}mm`,
-                                  ...(settings.mode === "column" ? { breakInside: "avoid" } : {}),
-                                }}
-                              >
-                                {item.text}
+                          <div
+                            className="a4-flow"
+                            style={{
+                              padding: `${settings.margin}mm`,
+                              columnCount: settings.mode === "column" ? settings.columnCount : 1,
+                              columnGap: settings.mode === "column" ? `${settings.columnGap}mm` : "0mm",
+                              fontSize: `${settings.fontSize}pt`,
+                              lineHeight: settings.lineHeight,
+                              fontFamily: FONT_STACKS[settings.font],
+                              textAlign: settings.justify ? "justify" : "left",
+                              hyphens: settings.justify ? "auto" : "manual",
+                              display: "block",
+                            }}
+                          >
+                            {hasContent ? (
+                              pageItems
+                                .filter((item) => item.text.trim())
+                                .map((item) => (
+                                  <p
+                                    key={item.id}
+                                    className="whitespace-pre-wrap"
+                                    style={{
+                                      marginBottom: `${settings.blockGap}mm`,
+                                      ...(settings.mode === "column" ? { breakInside: "avoid" } : {}),
+                                    }}
+                                  >
+                                    {item.text}
+                                  </p>
+                                ))
+                            ) : (
+                              <p className="print-hidden text-zinc-400 italic" style={{ fontSize: "10pt" }}>
+                                {blockIndex !== -1
+                                  ? `Answer #${blockIndex + 1} (Page ${pageIdx + 1}) will appear here, formatted onto this A4 sheet.`
+                                  : "Your answers will appear here, formatted onto this A4 sheet."}
                               </p>
-                            ))
-                          ) : (
-                            <p className="text-zinc-400 italic" style={{ fontSize: "10pt" }}>
-                              Your answers will appear here, formatted onto this A4 sheet.
-                            </p>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           </div>

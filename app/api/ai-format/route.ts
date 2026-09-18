@@ -158,10 +158,10 @@ Respond ONLY in strict JSON format:
       attempts: attempt > MAX_ATTEMPTS ? MAX_ATTEMPTS : attempt,
       evalPassed,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("AI Format API error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to format text using AI." },
+      { error: error instanceof Error ? error.message : "Failed to format text using AI." },
       { status: 500 }
     );
   }
